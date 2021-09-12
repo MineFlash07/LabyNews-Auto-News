@@ -45,7 +45,7 @@ class CodeRequest:
 
     def _write(self):
         # Create file if not exists
-        Path("../auths").mkdir(exist_ok=True)
+        Path("./auths").mkdir(exist_ok=True)
         # Open and write file
         with open(f"./auths/{self._timestamp.replace(':', '-')}.json", "w", encoding="UTF-8") as file:
             json.dump(self._data, file, indent=4)
