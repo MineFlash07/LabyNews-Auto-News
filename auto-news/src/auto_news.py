@@ -45,12 +45,13 @@ class AutoNewsService:
                 if self._current_tick % grabber.get_interval() == 0:
                     await grabber.tick()
 
+            for news in self.news_queue.copy():
+                await news.tick()
+
             self._current_tick += 1
             if self._current_tick > self._max_interval:
                 self._current_tick = 0
 
-            for news in self.news_queue.copy():
-                await news.tick()
 
             await asyncio.sleep(60)
 
