@@ -1,10 +1,11 @@
-from os import getenv
-from flask import Flask, request, abort
-from dotenv import load_dotenv
-from datetime import datetime
-from requests import post, HTTPError
-from pathlib import Path
 import json
+from datetime import datetime
+from os import getenv
+from pathlib import Path
+
+from dotenv import load_dotenv
+from flask import Flask, request, abort
+from requests import post, HTTPError
 
 # Loading .env file
 load_dotenv()
@@ -18,7 +19,6 @@ class CodeRequest:
     def __init__(self, code: str):
         self._code: str = code
         self.failed = False
-        self._data = None
         # Timestamp of the request
         self._timestamp = str(datetime.now())
 
@@ -34,21 +34,21 @@ class CodeRequest:
 
         try:
             auth_request.raise_for_status()
-            self._data = auth_request.json()
+            data = auth_request.json()
         except (HTTPError, json.JSONDecodeError):
             self.failed = True
             return self
 
-        self._write()
+        self._write(data)
 
         return self
 
-    def _write(self):
+    def _write(self, data: dict):
         # Create file if not exists
         Path("./auths").mkdir(exist_ok=True)
         # Open and write file
         with open(f"./auths/{self._timestamp.replace(':', '-')}.json", "w", encoding="UTF-8") as file:
-            json.dump(self._data, file, indent=4)
+            json.dump(data, file, indent=4)
 
 
 web_app = Flask(__name__)
