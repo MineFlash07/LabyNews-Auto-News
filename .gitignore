@@ -131,6 +131,9 @@ dmypy.json
 # Auths dir
 interaction-setup/auths
 
+# Save data
+auto-news/news_data.json
+
 #JetBrains
 .idea
 *.iml

@@ -1,7 +1,9 @@
 import asyncio
+import logging
 import os
 from abc import ABC, abstractmethod
 from json import load as json_load, dump as json_dump
+from time import sleep
 
 from dotenv import load_dotenv
 
@@ -13,21 +15,43 @@ class AutoNewsService:
 
     def __init__(self):
         load_dotenv()
+        # Setup logging
+        logging.basicConfig(filename="auto_news.log", filemode="w", encoding="utf-8",
+                            level=logging.DEBUG if os.getenv("DEBUG") == "TRUE" else logging.INFO,
+                            format="(%(asctime)s) [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+        stream_handler = logging.StreamHandler()
+        stream_handler.setFormatter(logging.Formatter("(%(asctime)s) [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S",
+                                                      "%"))
+        logging.root.addHandler(stream_handler)
+
         webhook_target_role = os.getenv("DISCORD_ROLE")
+        logging.info(f"Loaded {webhook_target_role} as target role.")
         self._webhooks = [Webhook(url, webhook_target_role) for url in os.getenv("DISCORD_WEBHOOKS").split(";")]
-        self._grabbers = [grabber_class(self) for grabber_class in grabbers.__dict__.values()
-                          if isinstance(grabber_class, type)]
+        logging.info(f"Loaded {len(self._webhooks)} webhooks.")
+        self._grabbers = [grabbers.VersionChecker(self)]
+        logging.info(f"Got {len(self._grabbers)} grabbers.")
         self._max_interval = max(grabber.get_interval() for grabber in self._grabbers)
+        logging.debug(f"Max interval of {self._max_interval}")
         self._current_tick = 0
-        self.news_queue = []
 
         # Save data
-        with open("./news_data.json", "r", encoding="UTF-8") as file_in:
-            self._save_data = json_load(file_in)
+        try:
+            with open("./news_data.json", "r", encoding="UTF-8") as file_in:
+                self._save_data = json_load(file_in)
+            logging.info("Loaded save data from file.")
+        except FileNotFoundError:
+            self._save_data = {}
+            logging.warning("No save date file found.")
 
-        asyncio.run(self._ticker())
+        logging.info("Ticket start")
+        try:
+            self._ticker()
+        except KeyboardInterrupt:
+            pass
 
-    def get_from_save_data(self, config_key: str):
+        logging.info("App stopped.")
+
+    async def get_from_save_data(self, config_key: str):
         try:
             return self._save_data[config_key]
         except KeyError:
@@ -37,47 +61,28 @@ class AutoNewsService:
         self._save_data[config_key] = value
         # Write
         with open("./news_data.json", "w", encoding="UTF-8") as file:
-            json_dump(self._save_data, file)
+            json_dump(self._save_data, file, indent=4)
+        logging.debug(f"Wrote to data:  {config_key} : {value}")
 
-    async def _ticker(self):
+    def _ticker(self):
         while True:
+            logging.debug(f"Started tick {self._current_tick}")
             for grabber in self._grabbers:
                 if self._current_tick % grabber.get_interval() == 0:
-                    await grabber.tick()
-
-            for news in self.news_queue.copy():
-                await news.tick()
+                    logging.info(f"Run grabber: {type(grabber).__name__}")
+                    asyncio.run(grabber.tick())
 
             self._current_tick += 1
-            if self._current_tick > self._max_interval:
+            if self._current_tick >= self._max_interval:
                 self._current_tick = 0
 
-            await asyncio.sleep(60)
+            sleep(60)
 
-    async def send_tweet(self, tweet):
-        pass
-
-    async def create_news(self, message_content: str, tweet, waiting_time: int):
-        # Queue news
-        self.news_queue.append(News(self, tweet, waiting_time))
+    async def create_news(self, message_content: str, news_content: str):
         # Send webhook
+        logging.info(f"News {message_content} created.")
         for webhook in self._webhooks:
-            webhook.send(message_content)
-
-
-class News:
-
-    def __init__(self, service: AutoNewsService, tweet, waiting_time: int):
-        self._waiting_time = waiting_time
-        self._tweet = tweet
-        self._service = service
-
-    async def tick(self):
-        if self._waiting_time > 0:
-            self._waiting_time -= 1
-            return
-
-        await self._service.send_tweet(self._tweet)
+            webhook.send(message_content, news_content)
 
 
 class UpdateChecker(ABC):
