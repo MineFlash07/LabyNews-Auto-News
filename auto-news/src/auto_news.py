@@ -52,7 +52,6 @@ class AutoNewsService:
             if self._current_tick > self._max_interval:
                 self._current_tick = 0
 
-
             await asyncio.sleep(60)
 
     async def send_tweet(self, tweet):
