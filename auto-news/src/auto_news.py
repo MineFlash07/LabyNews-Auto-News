@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import sys
@@ -57,13 +56,13 @@ class AutoNewsService:
 
         logging.info("App stopped.")
 
-    async def get_from_save_data(self, config_key: str):
+    def get_from_save_data(self, config_key: str):
         try:
             return self._save_data[config_key]
         except KeyError:
             return None
 
-    async def add_save_data(self, config_key: str, value):
+    def add_save_data(self, config_key: str, value):
         self._save_data[config_key] = value
         # Write
         with open("./news_data.json", "w", encoding="UTF-8") as file:
@@ -76,7 +75,10 @@ class AutoNewsService:
             for grabber in self._grabbers:
                 if self._current_tick % grabber.get_interval() == 0:
                     logging.info(f"Run grabber: {type(grabber).__name__}")
-                    asyncio.run(grabber.tick())
+                    try:
+                        grabber.tick()
+                    except Exception as exception:
+                        logging.exception(exception)
 
             self._current_tick += 1
             if self._current_tick >= self._max_interval:
@@ -84,7 +86,7 @@ class AutoNewsService:
 
             sleep(60)
 
-    async def create_news(self, message_content: str, news_content: str):
+    def create_news(self, message_content: str, news_content: str):
         # Send webhook
         logging.info(f"News created: {message_content}")
         for webhook in self._webhooks:
@@ -112,7 +114,7 @@ class UpdateChecker(ABC):
         pass
 
     @abstractmethod
-    async def tick(self) -> None:
+    def tick(self) -> None:
         pass
 
 

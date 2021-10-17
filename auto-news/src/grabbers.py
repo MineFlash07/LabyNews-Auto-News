@@ -14,12 +14,12 @@ class VersionChecker(UpdateChecker):
     def get_interval(self) -> int:
         return 5
 
-    async def tick(self) -> None:
+    def tick(self) -> None:
         # Check from versions.json to prevent unneeded html parsing
         online_version = get("https://dl.labymod.net/versions.json").json()["1.8.9"]["version"]
 
-        current_version = await self.service.get_from_save_data("labymod_version")
-        await self.service.add_save_data("labymod_version", online_version)
+        current_version = self.service.get_from_save_data("labymod_version")
+        self.service.add_save_data("labymod_version", online_version)
         logging.debug(f"VersionChecker: Got {online_version} and had {current_version}")
         if current_version is None:
             logging.warning("VersionChecker: No current version found in data.")
@@ -28,7 +28,7 @@ class VersionChecker(UpdateChecker):
         # Check news
         if online_version != current_version:
             # Add changelog later
-            await self.service.create_news(f"New LabyMod version **{online_version}** published. Please check!",
+            self.service.create_news(f"New LabyMod version **{online_version}** published. Please check!",
                                            self.NEWS.format(version=online_version))
 
 
@@ -54,13 +54,13 @@ class StaffChecker(UpdateChecker):
     def get_interval(self) -> int:
         return 60
 
-    async def tick(self) -> None:
+    def tick(self) -> None:
         # Feeding parser with badge website
         logging.debug("StaffChecker: Start parsing html.")
         self._parser.feed(get(f"https://laby.net/badge/{self._badge_uuid}").text)
 
-        current_staff = await self.service.get_from_save_data("labymod_staff")
-        await self.service.add_save_data("labymod_staff", self._parser.stored_staff_members)
+        current_staff = self.service.get_from_save_data("labymod_staff")
+        self.service.add_save_data("labymod_staff", self._parser.stored_staff_members)
         if current_staff is None:
             logging.warning("StaffChecker: No current staff data found.")
             return
@@ -69,7 +69,7 @@ class StaffChecker(UpdateChecker):
         logging.debug("StaffChecker: Started new checking")
         for staff_uuid, staff_data in self._parser.stored_staff_members.items():
             if staff_uuid not in current_staff:
-                await self.service.create_news(self.NEW_STAFF_MEMBER[0].format(name=staff_data["name"],
+                self.service.create_news(self.NEW_STAFF_MEMBER[0].format(name=staff_data["name"],
                                                                                rank=staff_data["rank"]),
                                                self.NEW_STAFF_MEMBER[1].format(name=staff_data["name"],
                                                                                rank=staff_data["rank"]))
@@ -82,14 +82,14 @@ class StaffChecker(UpdateChecker):
             change_message = self.NEW_RANK_PASSED if old_rank.startswith("Jr ") and old_rank[3:] == staff_data["rank"] \
                 else self.NEW_RANK
             # Create news
-            await self.service.create_news(change_message[0].format(name=staff_data["name"], rank=staff_data["rank"]),
+            self.service.create_news(change_message[0].format(name=staff_data["name"], rank=staff_data["rank"]),
                                            change_message[1].format(name=staff_data["name"], rank=staff_data["rank"]))
 
         # Looping trough old to get leaves
         logging.debug("StaffChecker: Started old checking")
         for staff_uuid, staff_data in current_staff.items():
             if staff_uuid not in self._parser.stored_staff_members:
-                await self.service.create_news(self.STAFF_LEAVE[0].format(name=staff_data["name"],
+                self.service.create_news(self.STAFF_LEAVE[0].format(name=staff_data["name"],
                                                                           rank=staff_data["rank"]),
                                                self.STAFF_LEAVE[1].format(name=staff_data["name"],
                                                                           rank=staff_data["rank"]))
