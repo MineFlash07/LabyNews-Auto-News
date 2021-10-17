@@ -29,7 +29,7 @@ class VersionChecker(UpdateChecker):
         if online_version != current_version:
             # Add changelog later
             self.service.create_news(f"New LabyMod version **{online_version}** published. Please check!",
-                                           self.NEWS.format(version=online_version))
+                                     self.NEWS.format(version=online_version))
 
 
 class StaffChecker(UpdateChecker):
@@ -83,7 +83,7 @@ class StaffChecker(UpdateChecker):
                 else self.NEW_RANK
             # Create news
             self.service.create_news(change_message[0].format(name=staff_data["name"], rank=staff_data["rank"]),
-                                           change_message[1].format(name=staff_data["name"], rank=staff_data["rank"]))
+                                     change_message[1].format(name=staff_data["name"], rank=staff_data["rank"]))
 
         # Looping trough old to get leaves
         logging.debug("StaffChecker: Started old checking")
@@ -171,7 +171,7 @@ class ShopChecker(UpdateChecker):
 
         new_banners = [banner for banner in self._parser.banners if banner not in current_banners]
         if len(new_banners) >= 1:
-            self.service.create_news("**New event banners - Please check**\n" + "\n".join(new_banners), "")
+            self.service.create_news("**New event banners - Please check!**\n" + "\n".join(new_banners), "")
 
     def tick(self) -> None:
         # Getting shop and parse it to get items
@@ -290,3 +290,36 @@ class ShopChecker(UpdateChecker):
             if self._banner_fetch and self._banner_fetch_currently:
                 logging.debug(f"ShopChecker (Banner): Added part of event banner {data}")
                 self.banners[-1] += data.replace("\n", "")
+
+
+class IngameAdvertisementChecker(UpdateChecker):
+
+    def __init__(self, service):
+        super().__init__(service)
+        self._title_filters = []
+        filter_env = os.getenv("ADVERTISEMENT_FILTER")
+        if filter_env is not None:
+            self._title_filters = filter_env.split(";")
+        logging.info(f"IngameAdvertisementChecker: Loaded {len(self._title_filters)} title filter(s).")
+
+    def get_interval(self) -> int:
+        return 30
+
+    def tick(self) -> None:
+        advertisement_json: dict = get("https://dl.labymod.net/advertisement/entries.json").json()
+        online_advertisement = [advertisement["title"] for advertisement in
+                                [*advertisement_json["left"], *advertisement_json["right"]]
+                                if advertisement["visible"] and advertisement["isNew"] and
+                                not any(title_filter in advertisement["title"] for title_filter in self._title_filters)]
+
+        current_advertisement = self.service.get_from_save_data("ingame_advertisement")
+        self.service.add_save_data("ingame_advertisement", online_advertisement)
+        if current_advertisement is None:
+            logging.warning("IngameAdvertisementChecker: No advertisement data found.")
+            return
+
+        new_advertisement = [advertisement for advertisement in online_advertisement if advertisement not
+                             in current_advertisement]
+        if len(new_advertisement) >= 1:
+            self.service.create_news("**New ingame advertisement - Please check!**\n" + "\n".join(new_advertisement),
+                                     "")
