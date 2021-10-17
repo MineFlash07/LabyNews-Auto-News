@@ -13,7 +13,7 @@ class Webhook:
             "tts": False,
         }
 
-        if news is not None:
+        if news is not None and news != "":
             json_payload["content"] += f"\n\n```{news}```"
             news = news.replace("\n", "%0A").replace(" ", "%20")
             json_payload["components"] = [{

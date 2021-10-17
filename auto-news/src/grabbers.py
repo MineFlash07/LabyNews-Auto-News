@@ -70,9 +70,9 @@ class StaffChecker(UpdateChecker):
         for staff_uuid, staff_data in self._parser.stored_staff_members.items():
             if staff_uuid not in current_staff:
                 self.service.create_news(self.NEW_STAFF_MEMBER[0].format(name=staff_data["name"],
-                                                                               rank=staff_data["rank"]),
-                                               self.NEW_STAFF_MEMBER[1].format(name=staff_data["name"],
-                                                                               rank=staff_data["rank"]))
+                                                                         rank=staff_data["rank"]),
+                                         self.NEW_STAFF_MEMBER[1].format(name=staff_data["name"],
+                                                                         rank=staff_data["rank"]))
                 continue
             old_rank = current_staff[staff_uuid]["rank"]
             if staff_data["rank"] == old_rank:
@@ -90,9 +90,9 @@ class StaffChecker(UpdateChecker):
         for staff_uuid, staff_data in current_staff.items():
             if staff_uuid not in self._parser.stored_staff_members:
                 self.service.create_news(self.STAFF_LEAVE[0].format(name=staff_data["name"],
-                                                                          rank=staff_data["rank"]),
-                                               self.STAFF_LEAVE[1].format(name=staff_data["name"],
-                                                                          rank=staff_data["rank"]))
+                                                                    rank=staff_data["rank"]),
+                                         self.STAFF_LEAVE[1].format(name=staff_data["name"],
+                                                                    rank=staff_data["rank"]))
                 continue
             logging.debug(f"StaffChecker: {staff_uuid} is still in team.")
 
@@ -114,7 +114,7 @@ class StaffChecker(UpdateChecker):
                 if not self._storing_started_prepared or attributes[0][1] != "ln-card-body":
                     return
                 logging.debug("StaffChecker: Started parsing.")
-                self._storing_started = 1
+                self._storing_started = True
                 self.stored_staff_members.clear()
                 return
 
@@ -123,13 +123,13 @@ class StaffChecker(UpdateChecker):
 
             logging.debug(f"StaffChecker: Found a tag with {attributes}")
             rank = None
-            for attribute in attributes:
-                if attribute[0] == "href":
+            for attribute_name, value in attributes:
+                if attribute_name == "href":
                     # Removing the /@ from href
-                    self._last_uuid = attribute[1][2:]
+                    self._last_uuid = value[2:]
                     continue
-                if attribute[0] == "title":
-                    rank = attribute[1]
+                if attribute_name == "title":
+                    rank = value
 
             if rank is None:
                 logging.debug("No rank found.")
@@ -150,3 +150,98 @@ class StaffChecker(UpdateChecker):
                 logging.debug("StaffChecker: Ended parsing.")
                 self._storing_started = False
                 self._storing_started_prepared = False
+
+
+class ShopChecker(UpdateChecker):
+
+    def __init__(self, service):
+        super().__init__(service)
+        self._parser = self._ShopItemParser()
+
+    def get_interval(self) -> int:
+        return 60
+
+    def tick(self) -> None:
+        # Getting shop and parse it to get items
+        logging.debug("ShopChecker: Start parsing html.")
+        self._parser.feed(get("https://labymod.net/shop").text)
+        # Filter shop items for emotes because it's not needed
+        online_items = {item_id: item_data["name"] for item_id, item_data in self._parser.stored_items.items()
+                        if item_data["category"] != "EMOTE"}
+
+        current_shop = self.service.get_from_save_data("labymod_shop")
+        self.service.add_save_data("labymod_shop", {
+            "items": [item_id for item_id in online_items],
+            "categories": self._parser.shop_categories
+        })
+        if current_shop is None:
+            logging.warning("ShopChecker: No current shop data found.")
+            return
+
+        message_content = "Shop-Update - Please check!"
+        items_to_announce = [item_name for item_id, item_name in online_items.items()
+                             if item_id not in current_shop["items"]]
+        if len(items_to_announce) >= 1:
+            message_content += "\n**New shop items:** " + ", ".join(items_to_announce)
+        categories_to_announce = [category for category in self._parser.shop_categories
+                                  if category not in current_shop["categories"]]
+        if len(categories_to_announce) >= 1:
+            message_content += "\n**New categories/seasons:** " + ", ".join(categories_to_announce)
+
+        if message_content != "Shop-Update - Please check!":
+            self.service.create_news(message_content, "")
+
+    class _ShopItemParser(HTMLParser):
+
+        def __init__(self):
+            super().__init__()
+            self.shop_categories = []
+            self.stored_items = {}
+            self._started_category_fetch = False
+
+        def handle_starttag(self, tag, attributes):
+            if tag == "html":
+                logging.debug("ShopChecker: Clearing stored data.")
+                self.stored_items.clear()
+                self.shop_categories.clear()
+                return
+            if tag == "ul" and len(attributes) == 1 and attributes[0][0] == "class" \
+                    and attributes[0][1] == "nav shop-tabs nav-tabs":
+                self._started_category_fetch = True
+                logging.debug("ShopChecker: Started category parsing.")
+                return
+
+            if tag == "li" and self._started_category_fetch:
+                logging.debug(f"ShopChecker: Found category with {attributes[0]}")
+                self.shop_categories.append(attributes[0][1].replace("active", "").strip())
+                return
+
+            if tag != "article" or len(attributes) <= 4:
+                return
+
+            logging.debug(f"ShopChecker: Found a tag with {attributes}")
+            data: dict = {}
+            date_id: int = -1
+            for attribute_name, value in attributes:
+                if attribute_name == "data-item-category":
+                    data["category"] = value
+                    continue
+                if attribute_name == "data-item-id":
+                    try:
+                        # Breaking if item already in
+                        if int(value) in self.stored_items:
+                            return
+                        date_id = int(value)
+                    except ValueError:
+                        logging.error(f"ShopChecker: Found a cosmetic with invalid date-id: {value}")
+                    continue
+                if attribute_name == "data-item-name":
+                    data["name"] = value
+            if date_id != -1:
+                logging.debug(f"ShopChecker: Found item {date_id} with {data}")
+                self.stored_items[date_id] = data
+
+        def handle_endtag(self, tag):
+            if tag == "ul" and self._started_category_fetch:
+                logging.debug("ShopChecker: Finished category parsing.")
+                self._started_category_fetch = False
