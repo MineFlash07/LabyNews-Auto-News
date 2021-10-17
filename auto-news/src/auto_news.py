@@ -34,7 +34,7 @@ class AutoNewsService:
         logging.info(f"Loaded {webhook_target_role} as target role.")
         self._webhooks = [Webhook(url, webhook_target_role) for url in os.getenv("DISCORD_WEBHOOKS").split(";")]
         logging.info(f"Loaded {len(self._webhooks)} webhook(s).")
-        self._grabbers = [grabbers.VersionChecker(self)]
+        self._grabbers = [grabbers.VersionChecker(self), grabbers.StaffChecker(self)]
         logging.info(f"Got {len(self._grabbers)} grabber(s).")
         self._max_interval = max(grabber.get_interval() for grabber in self._grabbers)
         logging.debug(f"Max interval of {self._max_interval}")
