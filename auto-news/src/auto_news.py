@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 from abc import ABC, abstractmethod
 from json import load as json_load, dump as json_dump
 from time import sleep
@@ -19,17 +20,22 @@ class AutoNewsService:
         logging.basicConfig(filename="auto_news.log", filemode="w", encoding="utf-8",
                             level=logging.DEBUG if os.getenv("DEBUG") == "TRUE" else logging.INFO,
                             format="(%(asctime)s) [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
-        stream_handler = logging.StreamHandler()
-        stream_handler.setFormatter(logging.Formatter("(%(asctime)s) [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S",
-                                                      "%"))
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.addFilter(LevelRangeLoggingFilter(logging.DEBUG, logging.INFO))
+        formatter = logging.Formatter("(%(asctime)s) [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S", "%")
+        stream_handler.setFormatter(formatter)
         logging.root.addHandler(stream_handler)
+        error_handler = logging.StreamHandler(sys.stderr)
+        error_handler.addFilter(LevelRangeLoggingFilter(logging.WARNING, logging.CRITICAL))
+        error_handler.setFormatter(formatter)
+        logging.root.addHandler(error_handler)
 
         webhook_target_role = os.getenv("DISCORD_ROLE")
         logging.info(f"Loaded {webhook_target_role} as target role.")
         self._webhooks = [Webhook(url, webhook_target_role) for url in os.getenv("DISCORD_WEBHOOKS").split(";")]
-        logging.info(f"Loaded {len(self._webhooks)} webhooks.")
+        logging.info(f"Loaded {len(self._webhooks)} webhook(s).")
         self._grabbers = [grabbers.VersionChecker(self)]
-        logging.info(f"Got {len(self._grabbers)} grabbers.")
+        logging.info(f"Got {len(self._grabbers)} grabber(s).")
         self._max_interval = max(grabber.get_interval() for grabber in self._grabbers)
         logging.debug(f"Max interval of {self._max_interval}")
         self._current_tick = 0
@@ -80,9 +86,20 @@ class AutoNewsService:
 
     async def create_news(self, message_content: str, news_content: str):
         # Send webhook
-        logging.info(f"News {message_content} created.")
+        logging.info(f"News created: {message_content}")
         for webhook in self._webhooks:
             webhook.send(message_content, news_content)
+
+
+class LevelRangeLoggingFilter(logging.Filter):
+
+    def __init__(self, small_level: int, big_level: int):
+        super().__init__()
+        self._min = small_level
+        self._max = big_level
+
+    def filter(self, record):
+        return self._min <= record.levelno <= self._max
 
 
 class UpdateChecker(ABC):
