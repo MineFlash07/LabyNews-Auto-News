@@ -1,0 +1,15 @@
+version: '3'
+
+services:
+  auto-news:
+    image: docker.pkg.github.com/mineflash07/labynews-auto-news/autonews:latest
+    container_name: Auto-News
+    volumes:
+      - auto-news:~/auto-news/output
+
+volumes:
+  auto-news:
+    driver_opts:
+      type: none
+      o: bind
+      device: ~/programs/auto-news
