@@ -1,0 +1,27 @@
+name: Docker publish
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  publish:
+    name: Image publshing
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Set Repository name
+        id: repository_name
+        run: echo "::set-output name=repository::$(tr '[:upper:]' '[:lower:]' <<< ${{ github.repository }})"
+
+      - name: Push Live Package
+        uses: docker/build-push-action@v1
+        with:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.pkg.github.com
+          repository: ${{ steps.repository_name.outputs.repository }}/autonews
+          tag_with_ref: true
