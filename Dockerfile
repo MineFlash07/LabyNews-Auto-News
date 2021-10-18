@@ -1,12 +1,12 @@
-FROM python:3.10.0
+FROM python:3.10.0-buster
 
-WORKDIR ~/auto-news
+WORKDIR /auto-news
 
 COPY ./auto-news/src .
 COPY requirements.txt .
 
 RUN pip install -r requirements.txt
 
-WORKDIR ~/auto-news/output
+WORKDIR ./output
 
 CMD ["python", "-u", "../auto_news.py"]
