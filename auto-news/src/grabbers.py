@@ -187,7 +187,8 @@ class ShopChecker(UpdateChecker):
         current_shop = self.service.get_from_save_data("labymod_shop")
         self.service.add_save_data("labymod_shop", {
             "items": [item_id for item_id in online_items],
-            "categories": self._parser.shop_categories
+            "categories": self._parser.shop_categories,
+            "event": self._parser.event
         })
         if current_shop is None:
             logging.warning("ShopChecker: No current shop data found.")
@@ -203,6 +204,9 @@ class ShopChecker(UpdateChecker):
         if len(categories_to_announce) >= 1:
             message_content += "\n**New categories/seasons:** " + ", ".join(categories_to_announce)
 
+        if self._parser.event is not None and "event" in current_shop and current_shop["event"] != self._parser.event:
+            message_content += f"\n**New shop event:** {self._parser.event}"
+
         if message_content != "Shop-Update - Please check!":
             self.service.create_news(message_content, "")
 
@@ -213,9 +217,12 @@ class ShopChecker(UpdateChecker):
             self.shop_categories = []
             self.stored_items = {}
             self.banners = []
+            self.event = None
             self._banner_fetch = True
             self._banner_fetch_currently = False
             self._started_category_fetch = False
+            self._started_event_fetch = False
+            self._inner_event_container_count = 0
 
         def handle_starttag(self, tag, attributes):
             if tag == "html":
@@ -226,14 +233,29 @@ class ShopChecker(UpdateChecker):
                 self.banners.clear()
                 return
 
-            # Check for banner
-            if self._banner_fetch and tag == "div" and len(attributes) >= 1 and attributes[0][0] == "class" \
-                    and attributes[0][1] == "info-bar":
-                self._banner_fetch_currently = True
-                # Add new banner element
-                logging.debug("ShopChecker (Banner): Found new event bar.")
-                self.banners.append("")
-                return
+            # Check for banner and event
+            if tag == "div":
+                if self._started_event_fetch:
+                    self._inner_event_container_count += 1
+                    logging.debug(f"ShopChecker: Increased inner event count to {self._inner_event_container_count}.")
+                    return
+
+                if len(attributes) < 1 or attributes[0][0] != "class":
+                    return
+
+                match attributes[0][1]:
+                    case "info-bar" if self._banner_fetch:
+                        # Add new banner element
+                        self._banner_fetch_currently = True
+                        logging.debug("ShopChecker (Banner): Found new event bar.")
+                        self.banners.append("")
+                        return
+                    case "row lm-box event-box":
+                        logging.debug("ShopChecker: Started event fetch. ")
+                        self.event = ""
+                        self._started_event_fetch = True
+                        return
+
             # Check for header to disable banner
             if tag == "header":
                 logging.debug("ShopChecker (Banner): Finished banner parsing.")
@@ -282,14 +304,34 @@ class ShopChecker(UpdateChecker):
                 logging.debug("ShopChecker: Finished category parsing.")
                 self._started_category_fetch = False
                 return
-            if self._banner_fetch and tag == "div" and self._banner_fetch_currently:
+            if tag != "div":
+                return
+
+            if self._banner_fetch and self._banner_fetch_currently:
                 logging.debug("ShopChecker (Banner): Finished an event banner.")
                 self._banner_fetch_currently = False
+                return
+
+            if not self._started_event_fetch:
+                return
+
+            if self._inner_event_container_count == 0:
+                logging.debug("ShopChecker: Finished event fetch.")
+                self._started_event_fetch = False
+                return
+
+            self._inner_event_container_count -= 1
+            logging.debug(f"ShopChecker: Decreased inner event count to {self._inner_event_container_count}")
 
         def handle_data(self, data):
+            data = data.replace("\n", "")
+            if self._started_event_fetch:
+                logging.debug(f"ShopChecker: Added part to shop event {data}")
+                self.event += data
+                return
             if self._banner_fetch and self._banner_fetch_currently:
                 logging.debug(f"ShopChecker (Banner): Added part of event banner {data}")
-                self.banners[-1] += data.replace("\n", "")
+                self.banners[-1] += data
 
 
 class IngameAdvertisementChecker(UpdateChecker):
